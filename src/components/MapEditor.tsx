@@ -87,11 +87,19 @@ export default function MapEditor() {
 
   const [routed, setRouted] = useState<LatLngExpression[]>([]);
   const [stats, setStats] = useState<null | { distance: number; duration: number; elevationGain: number; pointsCount: number }>(null);
+  const [autoRoute, setAutoRoute] = useState(true);
+  const [activeTab, setActiveTab] = useState<'info' | 'profile' | 'basemap'>('info');
+  const [baseMap] = useState<'osm'>('osm');
 
-  // whenever points change, if we have at least 2 points, request routing
+  // whenever points change, if we have at least 2 points, request routing (if autoRoute)
   useEffect(() => {
     let cancelled = false;
     async function computeRoute() {
+      if (!autoRoute) {
+        setRouted([]);
+        setStats(null);
+        return;
+      }
       if (points.length < 2) return;
       try {
         const payload = points.map((p) => [(p as any)[0], (p as any)[1]]);
@@ -128,7 +136,7 @@ export default function MapEditor() {
     }
     computeRoute();
     return () => { cancelled = true; };
-  }, [points]);
+  }, [points, autoRoute]);
 
   const center: LatLngExpression = [46.8, 2.3];
 
@@ -142,12 +150,14 @@ export default function MapEditor() {
 
   return (
     <div className="relative h-screen w-screen">
-        <MapContainer center={center} zoom={6} className="h-full w-full">
+        <MapContainer center={center} zoom={13} className="h-full w-full">
           <MapRefSetter onMap={(m) => setMap(m)} />
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          {baseMap === 'osm' && (
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          )}
           <ClickHandler setPoints={setPoints} />
           {routed.length > 0 ? (
             <Polyline positions={routed} pathOptions={{ color: "#16a34a" }} />
@@ -159,25 +169,61 @@ export default function MapEditor() {
           ))}
         </MapContainer>
 
-      {/* Controls overlay top-left */}
-      <div className="absolute top-4 left-4 z-[1000] flex flex-wrap gap-2 p-2 rounded bg-white/90 shadow">
-        <button onClick={undo} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">Annuler</button>
-        <button onClick={clear} className="px-3 py-2 rounded bg-red-50 hover:bg-red-100">Effacer</button>
-        <button onClick={downloadGeoJSON} className="px-3 py-2 rounded bg-green-600 text-white hover:opacity-90">GeoJSON</button>
-        <button onClick={exportGPX} className="px-3 py-2 rounded bg-amber-600 text-white hover:opacity-90">GPX</button>
+      {/* Top toolbar */}
+      <div className="absolute top-0 left-0 right-0 z-[1000] bg-white/95 border-b shadow flex items-center gap-3 px-3 py-2">
+        <button onClick={undo} className="px-2 py-1 rounded hover:bg-gray-100">↶ Annuler</button>
+        <button onClick={clear} className="px-2 py-1 rounded hover:bg-gray-100">🗑️ Tout supprimer</button>
+        <button onClick={exportGPX} className="px-2 py-1 rounded hover:bg-gray-100">⤓ Export GPX</button>
+        <button onClick={downloadGeoJSON} className="px-2 py-1 rounded hover:bg-gray-100">{} GeoJSON</button>
+        <div className="ml-auto" />
+      </div>
+
+      {/* Search box (placeholder) */}
+      <div className="absolute top-14 left-4 z-[1000] bg-white rounded shadow p-2 w-[260px]">
+        <input className="w-full border rounded px-2 py-1 text-sm" placeholder="Rechercher un endroit..." />
+      </div>
+
+      {/* Route control bubble top-center */}
+      <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-xl shadow px-3 py-2 flex items-center gap-3">
+        <span className="text-sm">Tracé automatique</span>
+        <button
+          onClick={() => setAutoRoute(!autoRoute)}
+          className={`w-8 h-5 rounded-full transition-colors ${autoRoute ? 'bg-green-600' : 'bg-gray-300'}`}
+          title="Activer/Désactiver le routage auto"
+        >
+          <span className={`block w-4 h-4 bg-white rounded-full transform transition-transform ${autoRoute ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+        <span className="w-3 h-3 rounded-full bg-red-600" title="Enregistrement"></span>
       </div>
 
       {/* Info overlay bottom-right */}
-      {stats && (
-        <div className="absolute bottom-4 right-4 z-[1000] max-w-xs p-3 border rounded-md bg-white/90 dark:bg-gray-800/90 shadow">
-          <div className="text-sm text-gray-700">
-            <div><span className="font-semibold">Distance:</span> {(stats.distance / 1000).toFixed(2)} km</div>
-            <div><span className="font-semibold">Durée estimée:</span> {(stats.duration / 3600).toFixed(2)} h</div>
-            <div><span className="font-semibold">Dénivelé +:</span> {Math.round(stats.elevationGain)} m</div>
-            <div><span className="font-semibold">Points:</span> {stats.pointsCount}</div>
-          </div>
+      <div className="absolute bottom-4 right-4 z-[1000] w-[320px] max-w-[90vw] bg-white/95 rounded-md shadow border">
+        <div className="flex text-sm">
+          <button className={`flex-1 px-3 py-2 border-b ${activeTab==='info' ? 'bg-white font-semibold' : 'bg-gray-50'}`} onClick={()=>setActiveTab('info')}>Informations</button>
+          <button className={`flex-1 px-3 py-2 border-b ${activeTab==='profile' ? 'bg-white font-semibold' : 'bg-gray-50'}`} onClick={()=>setActiveTab('profile')}>Diagramme</button>
+          <button className={`flex-1 px-3 py-2 border-b ${activeTab==='basemap' ? 'bg-white font-semibold' : 'bg-gray-50'}`} onClick={()=>setActiveTab('basemap')}>Fonds de carte</button>
         </div>
-      )}
+        <div className="p-3 text-sm text-gray-700">
+          {activeTab === 'info' && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <div>Durée</div><div>{stats ? (stats.duration/3600).toFixed(2) : '0.00'} h</div>
+              <div>Dénivelé +</div><div>{stats ? Math.round(stats.elevationGain) : 0} m</div>
+              <div>Distance</div><div>{stats ? (stats.distance/1000).toFixed(2) : '0.00'} km</div>
+              <div>Points</div><div>{stats ? stats.pointsCount : 0}</div>
+            </div>
+          )}
+          {activeTab === 'profile' && (
+            <div className="text-xs text-gray-500">Profil d'élévation à venir…</div>
+          )}
+          {activeTab === 'basemap' && (
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="basemap" checked readOnly /> OpenStreetMap
+              </label>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
