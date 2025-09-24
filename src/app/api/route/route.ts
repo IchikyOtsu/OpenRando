@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "At least two waypoints required" }, { status: 400 });
     }
 
-    let allCoords: Array<[number, number]> = []; // lon,lat
+  const allCoords: Array<[number, number]> = []; // lon,lat
     let totalDistance = 0;
     let totalDuration = 0;
 
@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       return R * c;
     };
 
+    // OSRM segment-by-segment with BRouter then straight-line fallback (all free, OSM-based)
     for (let i = 0; i < points.length - 1; i++) {
       const a = points[i];
       const b = points[i + 1];
@@ -48,7 +49,38 @@ export async function POST(req: Request) {
             continue; // next segment
           }
         }
-        // Fallback: straight line if OSRM fails or returns no route
+        // Fallback 1: BRouter (public, OSM-based)
+        try {
+          const brouterUrl = `https://brouter.de/brouter?profile=foot-hiking&format=geojson&lonlats=${a[1]},${a[0]}|${b[1]},${b[0]}`;
+          const bres = await fetch(brouterUrl);
+          if (bres.ok) {
+            const bdata = await bres.json();
+            let coords: Array<[number, number]> | undefined;
+            if (bdata?.type === 'FeatureCollection') {
+              const feat = bdata.features?.[0];
+              coords = feat?.geometry?.coordinates as Array<[number, number]> | undefined;
+            } else if (bdata?.type === 'Feature') {
+              coords = bdata?.geometry?.coordinates as Array<[number, number]> | undefined;
+            }
+            if (coords && coords.length > 1) {
+              if (allCoords.length === 0) allCoords.push(...coords);
+              else allCoords.push(...coords.slice(1));
+              // compute distance along returned coords
+              let segDist = 0;
+              for (let i2 = 1; i2 < coords.length; i2++) {
+                const [lon1, lat1] = coords[i2 - 1];
+                const [lon2, lat2] = coords[i2];
+                segDist += haversine(lat1, lon1, lat2, lon2);
+              }
+              totalDistance += segDist;
+              const walkingSpeedMps = 1.25; // ~4.5 km/h (estimation)
+              totalDuration += segDist / walkingSpeedMps;
+              continue; // next segment
+            }
+          }
+        } catch {}
+
+        // Fallback 2: straight line if both OSRM and BRouter fail or return no route
         const straight: Array<[number, number]> = [[a[1], a[0]], [b[1], b[0]]];
         if (allCoords.length === 0) allCoords.push(...straight);
         else allCoords.push(...straight.slice(1));
@@ -57,7 +89,37 @@ export async function POST(req: Request) {
         const walkingSpeedMps = 1.25; // ~4.5 km/h
         totalDuration += segDist / walkingSpeedMps;
       } catch {
-        // Network or fetch error: fallback to straight line
+        // Network or fetch error: try BRouter, else straight line
+        try {
+          const brouterUrl = `https://brouter.de/brouter?profile=foot-hiking&format=geojson&lonlats=${a[1]},${a[0]}|${b[1]},${b[0]}`;
+          const bres = await fetch(brouterUrl);
+          if (bres.ok) {
+            const bdata = await bres.json();
+            let coords: Array<[number, number]> | undefined;
+            if (bdata?.type === 'FeatureCollection') {
+              const feat = bdata.features?.[0];
+              coords = feat?.geometry?.coordinates as Array<[number, number]> | undefined;
+            } else if (bdata?.type === 'Feature') {
+              coords = bdata?.geometry?.coordinates as Array<[number, number]> | undefined;
+            }
+            if (coords && coords.length > 1) {
+              if (allCoords.length === 0) allCoords.push(...coords);
+              else allCoords.push(...coords.slice(1));
+              // compute distance
+              let segDist = 0;
+              for (let i2 = 1; i2 < coords.length; i2++) {
+                const [lon1, lat1] = coords[i2 - 1];
+                const [lon2, lat2] = coords[i2];
+                segDist += haversine(lat1, lon1, lat2, lon2);
+              }
+              totalDistance += segDist;
+              const walkingSpeedMps = 1.25;
+              totalDuration += segDist / walkingSpeedMps;
+              continue;
+            }
+          }
+        } catch {}
+
         const straight: Array<[number, number]> = [[a[1], a[0]], [b[1], b[0]]];
         if (allCoords.length === 0) allCoords.push(...straight);
         else allCoords.push(...straight.slice(1));
@@ -77,20 +139,21 @@ export async function POST(req: Request) {
       const locations = samples.map((c) => `${c[1]},${c[0]}`).join("|"); // lat,lon
       const elevRes = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${locations}`);
       if (elevRes.ok) {
-        const elevData = await elevRes.json();
-        const elevations: number[] = elevData.results.map((r: any) => r.elevation as number);
+        const elevData = await elevRes.json() as { results: Array<{ elevation: number }> };
+        const elevations: number[] = elevData.results.map((r) => r.elevation);
         for (let i = 1; i < elevations.length; i++) {
           const d = elevations[i] - elevations[i - 1];
           if (d > 0) elevationGain += d;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore elevation errors
     }
 
     const geometry = { type: "LineString", coordinates: allCoords };
     return NextResponse.json({ geometry, distance: totalDistance, duration: totalDuration, elevationGain, pointsCount: points.length });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

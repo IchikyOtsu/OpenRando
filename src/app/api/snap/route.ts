@@ -22,7 +22,8 @@ export async function POST(req: Request) {
     }
     const [snappedLon, snappedLat] = wp.location as [number, number];
     return NextResponse.json({ lat: snappedLat, lon: snappedLon });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

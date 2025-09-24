@@ -23,16 +23,24 @@ export async function GET(req: Request) {
     }
     const data = await res.json();
     // Normalize minimal fields used client-side
-    const results = (data as any[]).map((d) => ({
-      display_name: d.display_name as string,
-      lat: d.lat as string,
-      lon: d.lon as string,
-      boundingbox: d.boundingbox as [string, string, string, string] | undefined,
-      type: d.type as string | undefined,
-      class: d.class as string | undefined,
+    interface NominatimResult {
+      display_name: string;
+      lat: string;
+      lon: string;
+      boundingbox?: [string, string, string, string];
+      type?: string;
+      class?: string;
+    }
+    const results = (data as NominatimResult[]).map((d) => ({
+      display_name: d.display_name,
+      lat: d.lat,
+      lon: d.lon,
+      boundingbox: d.boundingbox,
+      type: d.type,
+      class: d.class,
     }));
     return NextResponse.json({ results });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ results: [] }, { status: 200 });
   }
 }

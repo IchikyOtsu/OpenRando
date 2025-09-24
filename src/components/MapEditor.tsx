@@ -5,11 +5,15 @@ import { MapContainer, TileLayer, Polyline, CircleMarker, useMapEvents, useMap, 
 import type { LatLngExpression, LeafletMouseEvent, Map as LeafletMap } from "leaflet";
 import togpx from "togpx";
 
-function ClickHandler({ setPoints }: { setPoints: (p: LatLngExpression[] | ((prev: LatLngExpression[]) => LatLngExpression[])) => void }) {
+function ClickHandler({ setPoints, snap }: { setPoints: (p: LatLngExpression[] | ((prev: LatLngExpression[]) => LatLngExpression[])) => void; snap: boolean }) {
   useMapEvents({
     async click(e: LeafletMouseEvent) {
       const lat = e.latlng.lat;
       const lon = e.latlng.lng;
+      if (!snap) {
+        setPoints((prev: LatLngExpression[]) => [...prev, [lat, lon]]);
+        return;
+      }
       try {
         const res = await fetch('/api/snap', {
           method: 'POST',
@@ -54,12 +58,16 @@ export default function MapEditor() {
   }
 
   function downloadGeoJSON() {
+    type Pair = [number, number]; // [lat, lon]
     const geojson = {
       type: "Feature",
       properties: {},
       geometry: {
         type: "LineString",
-        coordinates: points.map((p) => [ (p as any)[1], (p as any)[0] ]),
+        coordinates: points.map((p) => {
+          const [lat, lon] = Array.isArray(p) ? (p as Pair) : [0, 0];
+          return [lon, lat];
+        }),
       },
     };
     const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/json" });
@@ -72,6 +80,7 @@ export default function MapEditor() {
   }
 
   async function exportGPX() {
+    type Pair = [number, number]; // [lat, lon]
     if (points.length < 2) return;
     const geojson = {
       type: "FeatureCollection",
@@ -81,12 +90,15 @@ export default function MapEditor() {
           properties: {},
           geometry: {
             type: "LineString",
-            coordinates: points.map((p) => [ (p as any)[1], (p as any)[0] ]),
+            coordinates: points.map((p) => {
+              const [lat, lon] = Array.isArray(p) ? (p as Pair) : [0, 0];
+              return [lon, lat];
+            }),
           },
         },
       ],
     };
-    const gpx = togpx(geojson as any);
+    const gpx = togpx(geojson as unknown as GeoJSON.FeatureCollection);
     const blob = new Blob([gpx], { type: "application/gpx+xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -100,7 +112,8 @@ export default function MapEditor() {
   const [stats, setStats] = useState<null | { distance: number; duration: number; elevationGain: number; pointsCount: number }>(null);
   const [autoRoute, setAutoRoute] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'profile' | 'basemap'>('info');
-  const [baseMap] = useState<'osm'>('osm');
+  const ignKey = process.env.NEXT_PUBLIC_IGN_API_KEY as string | undefined;
+  const [baseMap, setBaseMap] = useState<'osm' | 'ign-plan' | 'ign-topo'>('osm');
 
   // Debounced search
   useEffect(() => {
@@ -137,11 +150,11 @@ export default function MapEditor() {
         const [latMin, latMax, lonMin, lonMax] = s.boundingbox.map(parseFloat);
         const southWest: [number, number] = [latMin, lonMin];
         const northEast: [number, number] = [latMax, lonMax];
-        (map as any).fitBounds([southWest, northEast], { padding: [40, 40] });
+        (map as LeafletMap).fitBounds([southWest, northEast], { padding: [40, 40] });
       } else {
         const lat = parseFloat(s.lat);
         const lon = parseFloat(s.lon);
-        (map as any).setView([lat, lon], 14);
+        (map as LeafletMap).setView([lat, lon], 14);
       }
     } catch {}
   }
@@ -161,7 +174,11 @@ export default function MapEditor() {
         return;
       }
       try {
-        const payload = points.map((p) => [(p as any)[0], (p as any)[1]]);
+        type Pair = [number, number];
+        const payload = points.map((p) => {
+          const [lat, lon] = Array.isArray(p) ? (p as Pair) : [0, 0];
+          return [lat, lon];
+        });
         const res = await fetch(`/api/route`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -181,7 +198,7 @@ export default function MapEditor() {
           // Fit the map to the routed geometry
           try {
             if (map && matched.length > 0) {
-              (map as any).fitBounds(matched as any, { padding: [40, 40] });
+              (map as LeafletMap).fitBounds(matched as [number, number][], { padding: [40, 40] });
             }
           } catch {}
         }
@@ -195,7 +212,7 @@ export default function MapEditor() {
     }
     computeRoute();
     return () => { cancelled = true; };
-  }, [points, autoRoute]);
+  }, [points, autoRoute, map]);
 
   const center: LatLngExpression = [46.8, 2.3];
 
@@ -203,7 +220,7 @@ export default function MapEditor() {
     const m = useMap();
     useEffect(() => {
       onMap(m);
-    }, [m]);
+    }, [m, onMap]);
     return null;
   }
 
@@ -217,8 +234,21 @@ export default function MapEditor() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
           )}
+          
+          {ignKey && baseMap === 'ign-plan' && (
+            <TileLayer
+              attribution='&copy; IGN Geoportail'
+              url={`https://wxs.ign.fr/${ignKey}/geoportail/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`}
+            />
+          )}
+          {ignKey && baseMap === 'ign-topo' && (
+            <TileLayer
+              attribution='&copy; IGN Geoportail'
+              url={`https://wxs.ign.fr/${ignKey}/geoportail/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.MAPS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`}
+            />
+          )}
           <ScaleControl position="bottomleft" />
-          <ClickHandler setPoints={setPoints} />
+          <ClickHandler setPoints={setPoints} snap={true} />
           {routed.length > 0 ? (
             <Polyline positions={routed} pathOptions={{ color: routeColor }} />
           ) : points.length > 0 ? (
@@ -235,6 +265,7 @@ export default function MapEditor() {
         <button onClick={clear} className="px-2 py-1 rounded hover:bg-gray-100">🗑️ Tout supprimer</button>
         <button onClick={exportGPX} className="px-2 py-1 rounded hover:bg-gray-100">⤓ Export GPX</button>
         <button onClick={downloadGeoJSON} className="px-2 py-1 rounded hover:bg-gray-100">{} GeoJSON</button>
+        {/* Plus de sélecteur de routage: on choisit automatiquement côté serveur */}
         <div className="ml-auto" />
       </div>
 
@@ -327,13 +358,24 @@ export default function MapEditor() {
             </div>
           )}
           {activeTab === 'profile' && (
-            <div className="text-xs text-gray-500">Profil d'élévation à venir…</div>
+            <div className="text-xs text-gray-500">Profil d&apos;élévation à venir…</div>
           )}
           {activeTab === 'basemap' && (
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="basemap" checked readOnly /> OpenStreetMap
+                <input type="radio" name="basemap" checked={baseMap==='osm'} onChange={()=>setBaseMap('osm')} /> OpenStreetMap
               </label>
+              
+              {ignKey && (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="basemap" checked={baseMap==='ign-plan'} onChange={()=>setBaseMap('ign-plan')} /> IGN - Plan
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="basemap" checked={baseMap==='ign-topo'} onChange={()=>setBaseMap('ign-topo')} /> IGN - Carte topo
+                  </label>
+                </>
+              )}
             </div>
           )}
         </div>

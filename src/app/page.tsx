@@ -22,7 +22,7 @@ export default function Home() {
       <main className="w-full max-w-4xl text-center">
         <h2 className="text-4xl sm:text-5xl font-extrabold leading-tight mb-4">OpenRando — Créez et partagez vos itinéraires de randonnée</h2>
         <p className="text-gray-700 dark:text-gray-300 mb-8">
-          Tracez des parcours, exportez-les en GPX, et partagez vos plus belles balades avec la communauté. OpenRando simplifie la création d'itinéraires et la découverte de nouvelles randonnées.
+          Tracez des parcours, exportez-les en GPX, et partagez vos plus belles balades avec la communauté. OpenRando simplifie la création d&apos;itinéraires et la découverte de nouvelles randonnées.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-center mb-12">
@@ -43,7 +43,7 @@ export default function Home() {
         <section id="features" className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
           <div className="p-4 border rounded-md">
             <h3 className="font-semibold mb-2">Traceur simple</h3>
-            <p className="text-sm text-gray-600">Dessinez votre parcours sur la carte, ajoutez des étapes et points d'intérêt.</p>
+            <p className="text-sm text-gray-600">Dessinez votre parcours sur la carte, ajoutez des étapes et points d&apos;intérêt.</p>
           </div>
           <div className="p-4 border rounded-md">
             <h3 className="font-semibold mb-2">Export & partage</h3>
@@ -51,7 +51,7 @@ export default function Home() {
           </div>
           <div className="p-4 border rounded-md">
             <h3 className="font-semibold mb-2">Communauté</h3>
-            <p className="text-sm text-gray-600">Découvrez des itinéraires partagés par d'autres randonneurs et contribuez facilement.</p>
+            <p className="text-sm text-gray-600">Découvrez des itinéraires partagés par d&apos;autres randonneurs et contribuez facilement.</p>
           </div>
         </section>
 
@@ -64,7 +64,7 @@ export default function Home() {
 
       <footer className="w-full max-w-4xl mt-16 text-center text-sm text-gray-500">
         <p>
-          © {new Date().getFullYear()} OpenRando — Projet par IchikyOtsu. Besoin d'aide ? Ouvrez une issue sur GitHub.
+          © {new Date().getFullYear()} OpenRando — Projet par IchikyOtsu. Besoin d&apos;aide ? Ouvrez une issue sur GitHub.
         </p>
       </footer>
     </div>
