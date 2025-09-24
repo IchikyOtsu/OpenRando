@@ -33,6 +33,10 @@ export default function MapEditor() {
   const [map, setMap] = useState<LeafletMap | null>(null);
   const [routeColor, setRouteColor] = useState<string>("#16a34a");
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
+  const [search, setSearch] = useState<string>("");
+  const [suggestions, setSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string; boundingbox?: [string, string, string, string] }>>([]);
+  const [searchLoading, setSearchLoading] = useState<boolean>(false);
+  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
 
   function undo() {
     const newPts = points.slice(0, -1);
@@ -97,6 +101,50 @@ export default function MapEditor() {
   const [autoRoute, setAutoRoute] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'profile' | 'basemap'>('info');
   const [baseMap] = useState<'osm'>('osm');
+
+  // Debounced search
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data?.results)) {
+          setSuggestions(data.results);
+        } else {
+          setSuggestions([]);
+        }
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  function handleSelectSuggestion(s: { display_name: string; lat: string; lon: string; boundingbox?: [string, string, string, string] }) {
+    setSearch(s.display_name);
+    setShowSuggestions(false);
+    if (!map) return;
+    try {
+      if (s.boundingbox && s.boundingbox.length === 4) {
+        const [latMin, latMax, lonMin, lonMax] = s.boundingbox.map(parseFloat);
+        const southWest: [number, number] = [latMin, lonMin];
+        const northEast: [number, number] = [latMax, lonMax];
+        (map as any).fitBounds([southWest, northEast], { padding: [40, 40] });
+      } else {
+        const lat = parseFloat(s.lat);
+        const lon = parseFloat(s.lon);
+        (map as any).setView([lat, lon], 14);
+      }
+    } catch {}
+  }
 
   // whenever points change, if we have at least 2 points, request routing (if autoRoute)
   useEffect(() => {
@@ -190,9 +238,43 @@ export default function MapEditor() {
         <div className="ml-auto" />
       </div>
 
-      {/* Search box (placeholder) */}
-      <div className="absolute top-14 left-4 z-[1000] bg-white rounded shadow p-2 w-[260px]">
-        <input className="w-full border rounded px-2 py-1 text-sm" placeholder="Rechercher un endroit..." />
+      {/* Search box with suggestions */}
+      <div className="absolute top-14 left-4 z-[1000] bg-white rounded shadow p-2 w-[300px]">
+        <input
+          className="w-full border rounded px-2 py-1 text-sm"
+          placeholder="Rechercher un endroit..."
+          value={search}
+          onChange={(e) => {
+            const v = e.target.value;
+            setSearch(v);
+            setShowSuggestions(true);
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && suggestions.length > 0) {
+              const s = suggestions[0];
+              if (s) handleSelectSuggestion(s);
+            }
+          }}
+        />
+        {searchLoading && <div className="text-xs text-gray-500 mt-1">Recherche…</div>}
+        {showSuggestions && suggestions.length > 0 && (
+          <ul className="mt-2 max-h-64 overflow-auto border rounded text-sm bg-white">
+            {suggestions.map((s, idx) => (
+              <li key={idx}>
+                <button
+                  className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSelectSuggestion(s)}
+                  title={s.display_name}
+                >
+                  {s.display_name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Route control bubble top-center */}

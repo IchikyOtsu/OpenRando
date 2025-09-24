@@ -14,27 +14,58 @@ export async function POST(req: Request) {
     let totalDistance = 0;
     let totalDuration = 0;
 
+    // Haversine distance in meters
+    const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const R = 6371000; // earth radius meters
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
     for (let i = 0; i < points.length - 1; i++) {
       const a = points[i];
       const b = points[i + 1];
   const profile = "walking";
   const url = `https://router.project-osrm.org/route/v1/${profile}/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const txt = await res.text();
-        return NextResponse.json({ error: txt }, { status: res.status });
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            const coords: Array<[number, number]> = route.geometry.coordinates; // [lon,lat]
+            // append, avoid duplicate join
+            if (allCoords.length === 0) allCoords.push(...coords);
+            else allCoords.push(...coords.slice(1));
+            totalDistance += route.distance ?? 0;
+            totalDuration += route.duration ?? 0;
+            continue; // next segment
+          }
+        }
+        // Fallback: straight line if OSRM fails or returns no route
+        const straight: Array<[number, number]> = [[a[1], a[0]], [b[1], b[0]]];
+        if (allCoords.length === 0) allCoords.push(...straight);
+        else allCoords.push(...straight.slice(1));
+        const segDist = haversine(a[0], a[1], b[0], b[1]);
+        totalDistance += segDist;
+        const walkingSpeedMps = 1.25; // ~4.5 km/h
+        totalDuration += segDist / walkingSpeedMps;
+      } catch {
+        // Network or fetch error: fallback to straight line
+        const straight: Array<[number, number]> = [[a[1], a[0]], [b[1], b[0]]];
+        if (allCoords.length === 0) allCoords.push(...straight);
+        else allCoords.push(...straight.slice(1));
+        const segDist = haversine(a[0], a[1], b[0], b[1]);
+        totalDistance += segDist;
+        const walkingSpeedMps = 1.25; // ~4.5 km/h
+        totalDuration += segDist / walkingSpeedMps;
       }
-      const data = await res.json();
-      if (!data.routes || data.routes.length === 0) {
-        return NextResponse.json({ error: 'No route found between points' }, { status: 422 });
-      }
-      const route = data.routes[0];
-      const coords: Array<[number, number]> = route.geometry.coordinates; // [lon,lat]
-      // append, avoid duplicate join
-      if (allCoords.length === 0) allCoords.push(...coords);
-      else allCoords.push(...coords.slice(1));
-      totalDistance += route.distance ?? 0;
-      totalDuration += route.duration ?? 0;
     }
 
     // Compute elevation gain using Open-Elevation (sample if too many points)
