@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Polyline, CircleMarker, useMapEvents, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, CircleMarker, useMapEvents, useMap, ScaleControl } from "react-leaflet";
 import type { LatLngExpression, LeafletMouseEvent, Map as LeafletMap } from "leaflet";
 import togpx from "togpx";
 
@@ -31,9 +31,16 @@ function ClickHandler({ setPoints }: { setPoints: (p: LatLngExpression[] | ((pre
 export default function MapEditor() {
   const [points, setPoints] = useState<LatLngExpression[]>([]);
   const [map, setMap] = useState<LeafletMap | null>(null);
+  const [routeColor, setRouteColor] = useState<string>("#16a34a");
+  const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
 
   function undo() {
-    setPoints(points.slice(0, -1));
+    const newPts = points.slice(0, -1);
+    setPoints(newPts);
+    if (newPts.length < 2) {
+      setRouted([]);
+      setStats(null);
+    }
   }
 
   function clear() {
@@ -100,7 +107,11 @@ export default function MapEditor() {
         setStats(null);
         return;
       }
-      if (points.length < 2) return;
+      if (points.length < 2) {
+        setRouted([]);
+        setStats(null);
+        return;
+      }
       try {
         const payload = points.map((p) => [(p as any)[0], (p as any)[1]]);
         const res = await fetch(`/api/route`, {
@@ -150,7 +161,7 @@ export default function MapEditor() {
 
   return (
     <div className="relative h-screen w-screen">
-        <MapContainer center={center} zoom={13} className="h-full w-full">
+        <MapContainer center={center} zoom={13} className="h-full w-full" zoomControl={false}>
           <MapRefSetter onMap={(m) => setMap(m)} />
           {baseMap === 'osm' && (
             <TileLayer
@@ -158,11 +169,12 @@ export default function MapEditor() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
           )}
+          <ScaleControl position="bottomleft" />
           <ClickHandler setPoints={setPoints} />
           {routed.length > 0 ? (
-            <Polyline positions={routed} pathOptions={{ color: "#16a34a" }} />
+            <Polyline positions={routed} pathOptions={{ color: routeColor }} />
           ) : points.length > 0 ? (
-            <Polyline positions={points} pathOptions={{ color: "#16a34a" }} />
+            <Polyline positions={points} pathOptions={{ color: routeColor }} />
           ) : null}
           {points.map((pt, i) => (
             <CircleMarker key={i} center={pt} radius={5} pathOptions={{ color: "#065f46", fillColor: "#16a34a" }} />
@@ -193,7 +205,27 @@ export default function MapEditor() {
         >
           <span className={`block w-4 h-4 bg-white rounded-full transform transition-transform ${autoRoute ? 'translate-x-4' : 'translate-x-0'}`} />
         </button>
-        <span className="w-3 h-3 rounded-full bg-red-600" title="Enregistrement"></span>
+        {/* Bouton couleur du tracé */}
+        <div className="relative">
+          <button
+            title="Choisir la couleur du tracé"
+            className="w-5 h-5 rounded-full border"
+            style={{ backgroundColor: routeColor }}
+            onClick={() => setShowColorPicker((v) => !v)}
+          />
+          {showColorPicker && (
+            <div className="absolute top-7 left-0 bg-white border rounded shadow p-2 flex gap-2 z-[1001]">
+              {['#16a34a','#2563eb','#dc2626','#f59e0b','#7c3aed','#0ea5e9','#10b981','#111827'].map((c) => (
+                <button
+                  key={c}
+                  className="w-5 h-5 rounded-full border"
+                  style={{ backgroundColor: c }}
+                  onClick={() => { setRouteColor(c); setShowColorPicker(false); }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Info overlay bottom-right */}
