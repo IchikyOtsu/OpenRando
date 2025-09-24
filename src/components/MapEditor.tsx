@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMapEvents, useMap, ScaleControl } from "react-leaflet";
 import type { LatLngExpression, LeafletMouseEvent, Map as LeafletMap } from "leaflet";
+import Link from "next/link";
 import togpx from "togpx";
 
 function ClickHandler({ setPoints, snap }: { setPoints: (p: LatLngExpression[] | ((prev: LatLngExpression[]) => LatLngExpression[])) => void; snap: boolean }) {
@@ -261,6 +262,14 @@ export default function MapEditor() {
 
       {/* Top toolbar */}
       <div className="absolute top-0 left-0 right-0 z-[1000] bg-white/95 border-b shadow flex items-center gap-3 px-3 py-2">
+        <Link 
+          href="/" 
+          className="px-2 py-1 rounded hover:bg-gray-100 flex items-center gap-1 text-green-700 hover:text-green-800 transition-colors"
+          title="Retour à l'accueil"
+        >
+          🏠 Accueil
+        </Link>
+        <div className="h-4 w-px bg-gray-300" />
         <button onClick={undo} className="px-2 py-1 rounded hover:bg-gray-100">↶ Annuler</button>
         <button onClick={clear} className="px-2 py-1 rounded hover:bg-gray-100">🗑️ Tout supprimer</button>
         <button onClick={exportGPX} className="px-2 py-1 rounded hover:bg-gray-100">⤓ Export GPX</button>
