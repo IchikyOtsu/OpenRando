@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMapEvents, useMap, ScaleControl } from "react-leaflet";
 import type { LatLngExpression, LeafletMouseEvent, Map as LeafletMap } from "leaflet";
 import Link from "next/link";
-import togpx from "togpx";
+import geojsonToGpx from "@dwayneparton/geojson-to-gpx";
 
 function ClickHandler({ setPoints, snap }: { setPoints: (p: LatLngExpression[] | ((prev: LatLngExpression[]) => LatLngExpression[])) => void; snap: boolean }) {
   useMapEvents({
@@ -83,12 +83,15 @@ export default function MapEditor() {
   async function exportGPX() {
     type Pair = [number, number]; // [lat, lon]
     if (points.length < 2) return;
-    const geojson = {
+    const geojson: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
       features: [
         {
           type: "Feature",
-          properties: {},
+          properties: {
+            name: "OpenRando Track",
+            time: new Date().toISOString()
+          },
           geometry: {
             type: "LineString",
             coordinates: points.map((p) => {
@@ -99,8 +102,9 @@ export default function MapEditor() {
         },
       ],
     };
-    const gpx = togpx(geojson as unknown as GeoJSON.FeatureCollection);
-    const blob = new Blob([gpx], { type: "application/gpx+xml" });
+    const gpxDocument = geojsonToGpx(geojson);
+    const gpxString = new XMLSerializer().serializeToString(gpxDocument);
+    const blob = new Blob([gpxString], { type: "application/gpx+xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -207,7 +211,7 @@ export default function MapEditor() {
           console.warn('No geometry in /api/route response', data);
           alert('Aucun itinéraire généré (voir console)');
         }
-      } catch (err) {
+      } catch {
         // ignore
       }
     }
